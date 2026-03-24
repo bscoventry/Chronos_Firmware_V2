@@ -3,14 +3,37 @@
 
 #include <zephyr/types.h>
 #include <zephyr/device.h>
+#include <zephyr/kernel.h>
 
 #if defined(CONFIG_BT)
-#define STACKSIZE CONFIG_BT_NUS_THREAD_STACK_SIZE
+#include <zephyr/bluetooth/bluetooth.h>
+#include <zephyr/drivers/uart.h>
+#ifdef CONFIG_UART_ASYNC_ADAPTER
+#include <uart_async_adapter.h>
+#endif
+#endif
+
+#if defined(CONFIG_BT)
+#if defined(CONFIG_BT_NUS_THREAD_STACK_SIZE)
+#define BLE_NUS_STACK_SIZE CONFIG_BT_NUS_THREAD_STACK_SIZE
+#else
+#define BLE_NUS_STACK_SIZE 2048
+#endif
+#define STACKSIZE BLE_NUS_STACK_SIZE
 #define PRIORITY 7
 #define DEVICE_NAME CONFIG_BT_DEVICE_NAME
 #define DEVICE_NAME_LEN (sizeof(DEVICE_NAME) - 1)
-#define UART_BUF_SIZE CONFIG_BT_NUS_UART_BUFFER_SIZE
+#if defined(CONFIG_BT_NUS_UART_BUFFER_SIZE)
+#define BLE_NUS_UART_BUF_SIZE CONFIG_BT_NUS_UART_BUFFER_SIZE
+#else
+#define BLE_NUS_UART_BUF_SIZE 256
+#endif
+#define UART_BUF_SIZE BLE_NUS_UART_BUF_SIZE
+#if defined(CONFIG_BT_NUS_UART_RX_WAIT_TIME)
 #define UART_WAIT_FOR_RX CONFIG_BT_NUS_UART_RX_WAIT_TIME
+#else
+#define UART_WAIT_FOR_RX 50000
+#endif
 #else
 #define STACKSIZE 256
 #define PRIORITY 7
@@ -44,6 +67,9 @@ UART_ASYNC_ADAPTER_INST_DEFINE(async_adapter);
 
 extern struct k_sem ble_init_ok;
 #if defined(CONFIG_BT)
+struct bt_nus_cb;
+extern struct bt_nus_cb nus_cb;
+void ble_advertising_work_init(void);
 extern struct k_work_delayable uart_work;
 extern const struct device *uart;
 void uart_work_handler(struct k_work *item);
@@ -73,7 +99,7 @@ void bt_receive_cb(struct bt_conn *conn, const uint8_t *const data, uint16_t len
 
 #ifdef CONFIG_BT_NUS_SECURITY_ENABLED
 void security_changed(struct bt_conn *conn, bt_security_t level,
-                 enum bt_security_err err);
+		      enum bt_security_err err);
 #endif
 
 #if defined(CONFIG_BT_NUS_SECURITY_ENABLED)
@@ -102,4 +128,3 @@ struct uart_data_t {
 };
 
 #endif /* BLE_H */
-

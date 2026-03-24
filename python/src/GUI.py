@@ -174,10 +174,10 @@ class NordicBLEGUI:
             pulse_width = int(self.pulse_var.get()) if self.pulse_var.get().isdigit() else 500
             frequency = int(self.freq_var.get()) if self.freq_var.get().isdigit() else 100
             
-            # 0x8000 = 32768 decimal = 0V output
-            data = struct.pack('<HHH', 0x8000, pulse_width, frequency)
+            # Byte 0: STIM_CTRL_STOP (0x00). Bytes 1–6: DAC, pulse, freq (pending when idle).
+            data = struct.pack('<BHHH', 0x00, 0x8000, pulse_width, frequency)
             
-            self.log_message("Sending STOP command: DAC=0V (0x8000)")
+            self.log_message("Sending STOP (ctrl=0x00): DAC=0V pending, pulse/freq updated when idle")
             
             future = self.run_coroutine(self._send_data(data))
             threading.Thread(target=self._check_send_result, args=(future,), daemon=True).start()
@@ -338,8 +338,9 @@ class NordicBLEGUI:
                 dac_binary = D2B.decimal_to_binary(dac_amp)
                 self.log_message(f"Stimulation ENABLED - Sending: DAC={dac_amp}μA, Pulse={pulse_width}μs, Freq={frequency}Hz")
             
-            # Pack data as little-endian uint16 values (matching C struct)
-            data = struct.pack('<HHH', dac_binary, pulse_width, frequency)
+            # Byte 0: 0x01 = START (apply params + run), 0x00 = STOP / pending-only when idle
+            ctrl = 0x01 if self.start_var.get() else 0x00
+            data = struct.pack('<BHHH', ctrl, dac_binary, pulse_width, frequency)
             
             # Send data
             future = self.run_coroutine(self._send_data(data))

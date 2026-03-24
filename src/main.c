@@ -17,6 +17,12 @@ Notes:
 #include <zephyr/devicetree.h>
 #include <soc.h>    //Standard System on chip imports
 #include <zephyr/logging/log.h>   //Disable on compile
+#include <inttypes.h>
+
+#if defined(CONFIG_BT)
+#include <zephyr/bluetooth/bluetooth.h>
+#include <zephyr/bluetooth/conn.h>
+#endif
 
 //nRFX imports. Note we are primarily runnig
 #include <nrfx_spim.h>
@@ -31,9 +37,11 @@ Notes:
 
 //Chronos engine imports 
 #include "BLE.h"  //BLE engine
+#include "ble_session.h"
 #include "spi.h" //SPI to howland current source
 #include "timer.h"  //Handles interrupt timing of stimulation
 #include "rtc_stim.h"   //handles IRQ routines for stimulation
+#include "data.h"
 #include "config.h"   //Set compilation settings. Look here for CONFIG_BT
 
 #define LOG_MODULE_NAME main
@@ -56,9 +64,6 @@ BT_CONN_CB_DEFINE(conn_callbacks) = {
 #ifdef CONFIG_BT_NUS_SECURITY_ENABLED
 	.security_changed = security_changed,
 #endif
-};
-static struct bt_nus_cb nus_cb = {
-	.received = bt_receive_cb,
 };
 #endif /* CONFIG_BT */
 
@@ -109,21 +114,20 @@ int main(void)
     update_dac1_amplitude(CONFIG_STIM_AMPLITUDE);
     update_dac2_amplitude(CONFIG_STIM_AMPLITUDE);
 
-    //If needing bluetooth set in config files
-    #if defined(CONFIG_BT)
-        update_stim_frequency(CONFIG_STIM_FREQUENCY_HZ);
-        measurement_timer_init();
-        int blink_status = 0;
-        int err = 0;
-        uint32_t experiment_counter = 0;
+    data_init_defaults();
 
-        configure_gpio();
-        err = uart_init();
-        if (err) {
-            error();
-        }
-    #endif
-    #if defined(CONFIG_BT)
+#if defined(CONFIG_BT)
+	/* Stimulation timer stays off until START control byte (see data.c). */
+	measurement_timer_init();
+	int err = 0;
+	uint32_t experiment_counter = 0;
+
+	configure_gpio();
+	err = uart_init();
+	if (err) {
+		error();
+	}
+
 	if (IS_ENABLED(CONFIG_BT_NUS_SECURITY_ENABLED)) {
 		err = bt_conn_auth_cb_register(&conn_auth_callbacks);
 		if (err) {
@@ -138,45 +142,32 @@ int main(void)
 		}
 	}
 
-	err = bt_enable(NULL);
-	if (err) {
-		error();
-	}
+	ble_session_init();
+	LOG_INF("Toggle reed P1.04 to enable BLE; stimulation off until START byte");
 
-	LOG_INF("Bluetooth initialized");
-
-	k_sem_give(&ble_init_ok);
-
-	if (IS_ENABLED(CONFIG_SETTINGS)) {
-		settings_load();
-	}
-
-	err = bt_nus_init(&nus_cb);
-	if (err) {
-		LOG_ERR("Failed to initialize UART service (err: %d)", err);
-		return 0;
-	}
-
-	k_work_init(&adv_work, adv_work_handler);
-	advertising_start();
+	/* RUN_STATUS_LED is driven by ble_session (on while BLE session active). */
 	for (;;) {
-		dk_set_led(RUN_STATUS_LED, (++blink_status) % 2);
-		k_msleep(10000);
 		if (MEASURE_TIMER == 1) {
+			k_msleep(10000);
 			experiment_counter += 10;
 			error_data my_error_data;
 			get_error_data(&my_error_data);
-			printf("Counter: %i Elapsed: %is\nEvent0 running error: %lu avg error: %lu max error: %lu\nEvents1-3 running error: %lu avg error: %lu max error: %lu, %lu, %lu\n",
-				my_error_data.mycounter,
-				experiment_counter,
-				my_error_data.event0_error,
-				(my_error_data.event0_error / my_error_data.mycounter),
-				my_error_data.event0_max,
-				my_error_data.myerror,
-				(my_error_data.myerror / my_error_data.mycounter),
-				my_error_data.event1_max,
-				my_error_data.event2_max,
-				my_error_data.event3_max);
+			printf("Counter: %i Elapsed: %is\nEvent0 running error: %" PRIu32
+			       " avg error: %" PRIu32 " max error: %" PRIu32 "\n"
+			       "Events1-3 running error: %" PRIu32 " avg error: %" PRIu32
+			       " max error: %" PRIu32 ", %" PRIu32 ", %" PRIu32 "\n",
+			       my_error_data.mycounter,
+			       experiment_counter,
+			       my_error_data.event0_error,
+			       (my_error_data.event0_error / my_error_data.mycounter),
+			       my_error_data.event0_max,
+			       my_error_data.myerror,
+			       (my_error_data.myerror / my_error_data.mycounter),
+			       my_error_data.event1_max,
+			       my_error_data.event2_max,
+			       my_error_data.event3_max);
+		} else {
+			k_sleep(K_FOREVER);
 		}
 	}
     #else

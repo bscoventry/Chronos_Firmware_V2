@@ -29,6 +29,12 @@ nrfx_timer_t measurement_timer_init(void);
 void update_stim_frequency(uint16_t frequency_hz);
 void update_pulse_width(uint16_t pulse_width_us);
 
+#if defined(CONFIG_BT) && !defined(CONFIG_SPI)
+void stim_timer_request_stop_after_burst(void);
+void timer_stimulation_enable(void);
+bool timer_stimulation_is_enabled(void);
+#endif
+
 #if !defined(CONFIG_BT)
 /** First pulse (DAC1): GPIO + SPI. Called from RTC handler at start of each period. */
 void timer_do_event0(void);

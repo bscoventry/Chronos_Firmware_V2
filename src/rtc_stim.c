@@ -1,8 +1,9 @@
 /*
- * TIMER-driven stimulation period: one interrupt per period from TIMER2,
- * then HFCLK + TIMER0 for the biphasic burst. TIMER2 is used only here;
- * TIMER0 = burst (timer.c), TIMER1 = measurement (timer.c).
+ * TIMER-driven stimulation period: one interrupt per period from TIMER20,
+ * then HFCLK + TIMER0 for the biphasic burst. Used only when CONFIG_BT=n.
  */
+#if !defined(CONFIG_BT)
+
 #include <nrfx_timer.h>
 #include <hal/nrf_clock.h>
 #include <zephyr/kernel.h>
@@ -30,9 +31,7 @@ static void period_timer_handler(nrf_timer_event_t event_type, void *p_context)
 	}
 	nrf_clock_event_clear(NRF_CLOCK_S, NRF_CLOCK_EVENT_HFCLKSTARTED);
 
-	/* Start of pulse: same as timer COMPARE0 (GPIO + DAC1 SPI) */
 	timer_do_event0();
-	/* Run one biphasic period via TIMER0 (COMPARE1/2/3); timer disables itself after COMPARE3 */
 	timer_start_one_shot_biphasic();
 }
 
@@ -68,7 +67,6 @@ void rtc_stim_init(uint16_t frequency_hz)
 	nrfx_timer_config_t config = NRFX_TIMER_DEFAULT_CONFIG(base_frequency);
 	config.bit_width = NRF_TIMER_BIT_WIDTH_32;
 
-	/* On this platform, explicitly connect TIMER20 IRQ for nrfx handler. */
 	IRQ_CONNECT(NRFX_IRQ_NUMBER_GET(NRF_TIMER20), IRQ_PRIO_LOWEST,
 		    nrfx_timer_irq_handler, &period_timer, 0);
 
@@ -84,3 +82,19 @@ void rtc_stim_init(uint16_t frequency_hz)
 	nrfx_timer_enable(&period_timer);
 	printf("RTC_STIM: TIMER20 enabled\n");
 }
+
+#else /* CONFIG_BT */
+
+#include <zephyr/kernel.h>
+#include "rtc_stim.h"
+
+void rtc_stim_start_lfclk(void)
+{
+}
+
+void rtc_stim_init(uint16_t frequency_hz)
+{
+	ARG_UNUSED(frequency_hz);
+}
+
+#endif /* CONFIG_BT */

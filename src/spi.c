@@ -1,6 +1,7 @@
 #include <nrfx_spim.h>
 #include <zephyr/kernel.h>
 #include <zephyr/device.h>
+#include <zephyr/irq.h>
 #include <hal/nrf_gpio.h>
 #include <string.h>
 #include "spi.h"
@@ -15,26 +16,27 @@ uint8_t dac2_buf_tx[DAC_TX_LEN] = {0x54, 0x55};
 uint8_t dac1_buf_rx[DAC_RX_LEN];
 uint8_t dac2_buf_rx[DAC_RX_LEN];
 void update_dac1_amplitude(uint16_t amplitude) {
-    dac1_buf_tx[0] = (amplitude >> 8) & 0xFF;  // MSB
-    dac1_buf_tx[1] = amplitude & 0xFF;         // LSB
+	unsigned int key = irq_lock();
 
-    printf("DAC1 amplitude updated to %u (0x%02X 0x%02X)\n",
-           amplitude, dac1_buf_tx[0], dac1_buf_tx[1]);
+	dac1_buf_tx[0] = (amplitude >> 8) & 0xFF;
+	dac1_buf_tx[1] = amplitude & 0xFF;
+	irq_unlock(key);
 }
 
 void update_dac2_amplitude(uint16_t amplitude) {
-    uint16_t opposite_amplitude;
-    if (amplitude == 0x0000) {
-        opposite_amplitude = 0xFFFF;  // Most negative → Most positive
-    } else {
-        opposite_amplitude = (uint16_t)(0x10000UL - amplitude);
-    }
+	uint16_t opposite_amplitude;
 
-    dac2_buf_tx[0] = (opposite_amplitude >> 8) & 0xFF;  // MSB
-    dac2_buf_tx[1] = opposite_amplitude & 0xFF;         // LSB
+	if (amplitude == 0x0000) {
+		opposite_amplitude = 0xFFFF;
+	} else {
+		opposite_amplitude = (uint16_t)(0x10000UL - amplitude);
+	}
 
-    printf("DAC2 amplitude updated to opposite of %u: %u (0x%02X 0x%02X)\n",
-           amplitude, opposite_amplitude, dac2_buf_tx[0], dac2_buf_tx[1]);
+	unsigned int key = irq_lock();
+
+	dac2_buf_tx[0] = (opposite_amplitude >> 8) & 0xFF;
+	dac2_buf_tx[1] = opposite_amplitude & 0xFF;
+	irq_unlock(key);
 }
 
 void cs_select(uint32_t pin_number) {
@@ -84,13 +86,8 @@ void spi_write_dac1(uint8_t *tx_data, uint8_t *rx_data) {
            (unsigned long)sp->ENABLE,
            (unsigned long)(timeout_iters - timeout));
 #endif
-    if (err != 0 && SPI_VERBOSE == 0) {
-        /* Keep errors visible even with SPI_VERBOSE off. */
-        printf("spi_write_dac1: nrfx_spim_xfer error=%d\n", (int)err);
-    }
-    if (timed_out && SPI_VERBOSE == 0) {
-        printf("spi_write_dac1: SPIM completion timeout (END/STOPPED not set)\n");
-    }
+    (void)err;
+    (void)timed_out;
 }
 
 void spi_write_dac2(uint8_t *tx_data, uint8_t *rx_data) {
@@ -122,12 +119,8 @@ void spi_write_dac2(uint8_t *tx_data, uint8_t *rx_data) {
            (unsigned long)sp->EVENTS_END,
            (unsigned long)sp->EVENTS_STOPPED);
 #endif
-    if (err != 0 && SPI_VERBOSE == 0) {
-        printf("spi_write_dac2: nrfx_spim_xfer error=%d\n", (int)err);
-    }
-    if (timed_out && SPI_VERBOSE == 0) {
-        printf("spi_write_dac2: SPIM completion timeout (END/STOPPED not set)\n");
-    }
+    (void)err;
+    (void)timed_out;
 }
 void spi_init(void)
 {

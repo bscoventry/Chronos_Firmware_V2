@@ -2,6 +2,7 @@
 #include <zephyr/kernel.h>
 #include <zephyr/device.h>
 #include <zephyr/irq.h>
+#include <zephyr/sys/atomic.h>
 #include <hal/nrf_gpio.h>
 #include <hal/nrf_clock.h>
 #include <inttypes.h>
@@ -51,6 +52,15 @@ void update_pulse_width(uint16_t pulse_width_us)
 void timer_init(void)
 {
 }
+
+#if defined(CONFIG_BT)
+void stim_timer_request_stop_after_burst(void) {}
+void timer_stimulation_enable(void) {}
+bool timer_stimulation_is_enabled(void)
+{
+	return false;
+}
+#endif
 
 #if !defined(CONFIG_BT)
 void timer_do_event0(void) {}
@@ -108,6 +118,20 @@ static uint32_t current_period_us = DEFAULT_STIM_PERIOD;
 static uint32_t current_pulse_width_us = DEFAULT_PULSE_WIDTH;
 static void timer_handler(nrf_timer_event_t event_type, void * p_context);
 
+#if defined(CONFIG_BT)
+static atomic_t stim_stop_pending;
+
+/* BLE stack may allow HFCLK to gate off between events; SPIM + TIMER00 need it during stim. */
+static void stim_ensure_hfclk(void)
+{
+	nrf_clock_task_trigger(NRF_CLOCK_S, NRF_CLOCK_TASK_HFCLKSTART);
+	while (!nrf_clock_event_check(NRF_CLOCK_S, NRF_CLOCK_EVENT_HFCLKSTARTED)) {
+		/* spin */
+	}
+	nrf_clock_event_clear(NRF_CLOCK_S, NRF_CLOCK_EVENT_HFCLKSTARTED);
+}
+#endif
+
 void get_error_data(error_data *data) {
     data->event1_max = atomic_get(&event1_error_max);
     data->event2_max = atomic_get(&event2_error_max);
@@ -143,8 +167,9 @@ void update_stim_frequency(uint16_t frequency_hz) {
         NRF_TIMER_SHORT_COMPARE0_CLEAR_MASK, true);
 
     //LEE STILL ADDING CODE*************************************************************************************************************************
-    //Start the timer again
+#if !defined(CONFIG_BT)
     nrfx_timer_enable(&timer_inst);
+#endif
     //LEE DONE ADDING CODE*************************************************************************************************************************
 
     // Also update the measurement timer expectations if needed
@@ -234,10 +259,36 @@ void timer_init(void)
     nrfx_timer_extended_compare(&timer_inst, NRF_TIMER_CC_CHANNEL1, event1_ticks, 0, true);
     nrfx_timer_extended_compare(&timer_inst, NRF_TIMER_CC_CHANNEL2, event2_ticks, 0, true);
     nrfx_timer_extended_compare(&timer_inst, NRF_TIMER_CC_CHANNEL3, event3_ticks, 0, true);
+#if defined(CONFIG_BT)
+    /* Stimulation begins only after explicit START over NUS (timer_stimulation_enable). */
+    nrfx_timer_disable(&timer_inst);
+    printf("Timer status: init OK, stimulation disabled until START\n");
+#else
     nrfx_timer_enable(&timer_inst);
     printf("Timer status: %s (continuous)\n",
-        nrfx_timer_is_enabled(&timer_inst) ? "enabled" : "disabled");
+           nrfx_timer_is_enabled(&timer_inst) ? "enabled" : "disabled");
+#endif
 }
+
+#if defined(CONFIG_BT)
+void stim_timer_request_stop_after_burst(void)
+{
+	atomic_set(&stim_stop_pending, 1);
+}
+
+void timer_stimulation_enable(void)
+{
+	atomic_set(&stim_stop_pending, 0);
+	stim_ensure_hfclk();
+	nrfx_timer_clear(&timer_inst);
+	nrfx_timer_enable(&timer_inst);
+}
+
+bool timer_stimulation_is_enabled(void)
+{
+	return nrfx_timer_is_enabled(&timer_inst);
+}
+#endif
 
 #if !defined(CONFIG_BT)
 void timer_burst_init(void)
@@ -276,8 +327,7 @@ void timer_do_event0(void)
     nrf_gpio_pin_clear(NRF_GPIO_PIN_MAP(0, 13));
     nrf_gpio_pin_set(NRF_GPIO_PIN_MAP(1, 3));
     if (spi_ok) {
-        uint8_t phase1_tx[] = {0xFF, 0xAA};
-        spi_write_dac1(phase1_tx, dac1_buf_rx);
+        spi_write_dac1(dac2_buf_tx, dac1_buf_rx);
     }
 }
 
@@ -322,6 +372,9 @@ static void timer_handler(nrf_timer_event_t event_type, void * p_context)
     
     switch(event_type) {
         case NRF_TIMER_EVENT_COMPARE0:
+#if defined(CONFIG_BT)
+            stim_ensure_hfclk();
+#endif
             if(MEASURE_TIMER == 1){
                 current_time = nrfx_timer_capture(&measurement_timer, NRF_TIMER_CC_CHANNEL0);
                     
@@ -352,9 +405,8 @@ static void timer_handler(nrf_timer_event_t event_type, void * p_context)
             nrf_gpio_pin_clear(NRF_GPIO_PIN_MAP(0, 13));
             nrf_gpio_pin_set(NRF_GPIO_PIN_MAP(1, 3));
             if (spi_ok) {
-                /* Phase 1 (200 us): most negative => 0x00 */
-                uint8_t phase1_tx[] = {0x00, 0x00};
-                spi_write_dac1(phase1_tx, dac1_buf_rx);
+                /* Phase 1: negative excursion (offset-binary opposite of +I code in dac1_buf). */
+                spi_write_dac1(dac2_buf_tx, dac1_buf_rx);
             }
             break;
             
@@ -401,9 +453,8 @@ static void timer_handler(nrf_timer_event_t event_type, void * p_context)
             //nrf_gpio_pin_set(NRF_GPIO_PIN_MAP(0, 13));
             nrf_gpio_pin_set(NRF_GPIO_PIN_MAP(1, 3));
             if (spi_ok) {
-                /* Phase 2 (200 us): most positive => 0xFF */
-                uint8_t phase2_tx[] = {0xFF, 0xFF};
-                spi_write_dac1(phase2_tx, dac1_buf_rx);
+                /* Phase 2: positive excursion = load-current code (host D2B → DAC_amplitude). */
+                spi_write_dac1(dac1_buf_tx, dac1_buf_rx);
             }
             break;
             
@@ -431,10 +482,13 @@ static void timer_handler(nrf_timer_event_t event_type, void * p_context)
                 spi_write_dac1(idle_tx, dac1_buf_rx);
             }
 
-#if !defined(CONFIG_BT)
-            /* End of biphasic burst:
-             * - stop further timer compares for power and determinism
-             * HFCLK stop is temporarily deferred while debugging first-burst SPI behavior. */
+#if defined(CONFIG_BT)
+            if (atomic_get(&stim_stop_pending)) {
+                nrfx_timer_disable(timer_inst);
+                atomic_set(&stim_stop_pending, 0);
+            }
+#else
+            /* End of biphasic burst (low-power path): stop TIMER00 until next RTC period. */
             nrfx_timer_disable(timer_inst);
 #endif
             break;

@@ -11,3 +11,7 @@ target_sources(app PRIVATE
   src/spi.c
   src/timer.c
 )
+
+if(CONFIG_BT)
+  target_sources(app PRIVATE src/ble_session.c)
+endif()

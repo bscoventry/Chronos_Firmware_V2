@@ -26,6 +26,7 @@
 #include <zephyr/logging/log.h>
 #define LOG_MODULE_NAME peripheral_uart
 #include "BLE.h"
+#include "ble_session.h"
 #include "data.h"
 
 LOG_MODULE_REGISTER(LOG_MODULE_NAME);
@@ -73,10 +74,15 @@ void uart_work_handler(struct k_work *item)
 
 bool uart_test_async_api(const struct device *dev)
 {
+#if defined(CONFIG_UART_ASYNC_API)
 	const struct uart_driver_api *api =
-			(const struct uart_driver_api *)dev->api;
+		(const struct uart_driver_api *)dev->api;
 
 	return (api->callback_set != NULL);
+#else
+	ARG_UNUSED(dev);
+	return false;
+#endif
 }
 #endif
 
@@ -296,20 +302,24 @@ void error(void)
 void bt_receive_cb(struct bt_conn *conn, const uint8_t *const data,
 			  uint16_t len)
 {
-    // Store the data
-    if (len <= BLE_DATA_BUFFER_SIZE) {
-        memcpy(ble_received_data, data, len);
-        ble_data_length = len;
-        ble_data_ready = true;
-    }
+	ble_session_feed_activity();
 
-    process_received_data(&settings, ble_received_data, ble_data_length);
-	int err;
-	char addr[BT_ADDR_LE_STR_LEN] = {0};
+	if (len <= BLE_DATA_BUFFER_SIZE) {
+		memcpy(ble_received_data, data, len);
+		ble_data_length = len;
+		ble_data_ready = true;
+	}
 
-	bt_addr_le_to_str(bt_conn_get_dst(conn), addr, ARRAY_SIZE(addr));
+	process_received_data(&settings, ble_received_data, ble_data_length);
+}
 
-	LOG_INF("Received data from: %s: %X", addr, ble_received_data);
+struct bt_nus_cb nus_cb = {
+	.received = bt_receive_cb,
+};
+
+void ble_advertising_work_init(void)
+{
+	k_work_init(&adv_work, adv_work_handler);
 }
 #endif /* CONFIG_BT */
 
@@ -422,7 +432,7 @@ void uart_cb(const struct device *dev, struct uart_event *evt, void *user_data)
 
 		aborted_len += evt->data.tx.len;
 		buf = CONTAINER_OF((void *)aborted_buf, struct uart_data_t,
-				   data);
+				   data[0]);
 
 		uart_tx(uart, &buf->data[aborted_len],
 			buf->len - aborted_len, SYS_FOREVER_MS);
