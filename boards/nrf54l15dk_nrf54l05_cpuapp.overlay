@@ -1,0 +1,16 @@
+/*
+ * Copyright (c) 2024 Nordic Semiconductor ASA
+ *
+ * SPDX-License-Identifier: LicenseRef-Nordic-5-Clause
+ */
+
+/ {
+	chosen {
+		nordic,nus-uart = &uart30;
+	};
+};
+
+/* nRF54L15 DK uses UART30 for NUS; ensure it is enabled. */
+&uart30 {
+	status = "okay";
+};

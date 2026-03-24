@@ -1,0 +1,15 @@
+{
+    "operations": [
+        {
+            "operation":{
+                "type": "smp",
+                "operation":2,
+                "group_id":64,
+                "command_id":0,
+                "sequence_number":0,
+                "data": [[6, true, 9, true, 20, false, 22, true, 23, false, 42, true, 45, true, 47, false],[1,1800]]
+            },
+            "operationId":"1"
+        }
+    ]
+}

@@ -1,0 +1,57 @@
+#include "../common-pinctrl.dtsi"
+
+/* We're using nrfx directly, so disable Zephyr's SPI driver */
+&spi1 {
+    status = "disabled";
+};
+
+/* Still need to release NFC pins for GPIO use */
+&gpio0 {
+    status = "okay";
+};
+
+/* MBOX (IPC hardware) must be okay for BLE-over-IPC; fixes __device_dts_ord_25 undeclared. */
+&mbox {
+    status = "okay";
+};
+
+/*
+ * Power: explicitly disable unused peripherals so they are not initialized
+ * (no clocks, no power to those blocks). App uses: uart0, spi1 (nrfx), timer0/1 (nrfx), gpio, flash, mbox.
+ */
+&i2c0 { status = "disabled"; };
+&i2c1 { status = "disabled"; };
+&i2c2 { status = "disabled"; };
+&i2c3 { status = "disabled"; };
+&spi0 { status = "disabled"; };
+&spi2 { status = "disabled"; };
+&spi3 { status = "disabled"; };
+&spi4 { status = "disabled"; };
+&uart2 { status = "disabled"; };
+&uart3 { status = "disabled"; };
+&adc { status = "disabled"; };
+&timer2 { status = "disabled"; };
+&rtc0 { status = "disabled"; };
+&rtc1 { status = "disabled"; };
+&wdt1 { status = "disabled"; };
+&comp { status = "disabled"; };
+&pwm0 { status = "disabled"; };
+&pwm1 { status = "disabled"; };
+&pwm2 { status = "disabled"; };
+&pwm3 { status = "disabled"; };
+&pdm0 { status = "disabled"; };
+&i2s0 { status = "disabled"; };
+&qspi { status = "disabled"; };
+&nfct { status = "disabled"; };
+&qdec0 { status = "disabled"; };
+&qdec1 { status = "disabled"; };
+&usbd { status = "disabled"; };
+&usbreg { status = "disabled"; };
+
+/* LFXO: reverted - disabling it increased power on this design. Leave default. */
+/* &lfxo { status = "disabled"; }; */
+
+/* Power: ensure VREGH (high-voltage regulator) is off if not used. */
+&vregh {
+	status = "disabled";
+};

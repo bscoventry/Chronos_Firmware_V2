@@ -1,0 +1,110 @@
+/*
+ * Copyright (c) 2024 Nordic Semiconductor ASA
+ *
+ * SPDX-License-Identifier: LicenseRef-Nordic-5-Clause
+ */
+/*
+ * nRF54L15: SPIM20 on P1 (nrfx). SCK P1.05, MOSI P1.06, CS1 P1.09, CS2 P1.14.
+ * UART20 disabled so P1.x available. nrfx configures GPIO+PSEL; no pinctrl for SPI.
+ */
+
+/* Disabled: nrfx uses SPIM20. Disable mx25r64 to avoid spi00 bus reference. */
+&spi00 {
+	status = "disabled";
+	pinctrl-0 = <>;
+	pinctrl-1 = <>;
+	pinctrl-names = "default", "sleep";
+};
+&mx25r64 {
+	status = "disabled";
+};
+/* status = "okay" so SoC domain/clock for SPIM20 is enabled; nrfx drives SPI, no Zephyr SPI driver. */
+&spi20 {
+	status = "okay";
+	pinctrl-0 = <>;
+	pinctrl-1 = <>;
+	pinctrl-names = "default", "sleep";
+};
+
+/* Still need to release NFC pins for GPIO use */
+&gpio0 {
+	status = "okay";
+};
+&gpio1 {
+	status = "okay";
+};
+&gpio2 {
+	status = "okay";
+};
+/* MBOX (IPC hardware) must be okay for BLE-over-IPC; fixes __device_dts_ord_25 undeclared. */
+//&mbox {
+	//status = "okay";
+//};
+
+/*
+ * Power: explicitly disable unused peripherals so they are not initialized
+ * (no clocks, no power to those blocks). App uses: uart30, spi20 (nrfx SPIM20), timer00/10 (nrfx), gpio, flash, mbox.
+ * nRF54L15 labels: i2c20/21/22/30, spi00/20/21/22/30, uart00/20/21/22/30, timer20/21/22/23/24, etc.
+ */
+&i2c20 { status = "disabled"; };
+&i2c21 { status = "disabled"; };
+&i2c22 { status = "disabled"; };
+&i2c30 { status = "disabled"; };
+/* spi00/spi20 cleared above for nrfx; clear pinctrl on rest to avoid device ord refs. */
+&spi21 {
+	status = "disabled";
+	pinctrl-0 = <>;
+	pinctrl-1 = <>;
+	pinctrl-names = "default", "sleep";
+};
+&spi22 {
+	status = "disabled";
+	pinctrl-0 = <>;
+	pinctrl-1 = <>;
+	pinctrl-names = "default", "sleep";
+};
+&spi30 {
+	status = "disabled";
+	pinctrl-0 = <>;
+	pinctrl-1 = <>;
+	pinctrl-names = "default", "sleep";
+};
+&uart00 { status = "disabled"; };
+&uart20 { status = "disabled"; };
+&uart21 { status = "disabled"; };
+&uart22 { status = "disabled"; };
+&adc { status = "disabled"; };
+&timer20 { status = "disabled"; };
+&timer21 { status = "disabled"; };
+&timer22 { status = "disabled"; };
+&timer23 { status = "disabled"; };
+&timer24 { status = "disabled"; };
+//&wdt30 { status = "disabled"; };
+//&wdt31 { status = "disabled"; };
+&comp { status = "disabled"; };
+&pwm20 { status = "disabled"; };
+&pwm21 { status = "disabled"; };
+&pwm22 { status = "disabled"; };
+&pdm20 { status = "disabled"; };
+&pdm21 { status = "disabled"; };
+&i2s20 { status = "disabled"; };
+&nfct { status = "disabled"; };
+&qdec20 { status = "disabled"; };
+&qdec21 { status = "disabled"; };
+
+/* LFXO: reverted - disabling it increased power on this design. Leave default. */
+/* &lfxo { status = "disabled"; }; */
+/ {
+	chosen {
+		zephyr,console = &uart30;
+		nordic,nus-uart = &uart30;
+	};
+};
+
+/* nRF54L15 DK uses UART30 for NUS; ensure it is enabled. */
+&uart30 {
+	status = "okay";
+};
+&grtc {
+    status = "okay";
+};
