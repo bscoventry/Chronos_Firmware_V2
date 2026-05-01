@@ -33,7 +33,7 @@
 	};
 };
 
-/* UART1 (Arduino / P1.00–P1.01) disabled to release P1.00 and P1.01 for the switch */
+/* UART1 (Arduino / P1.00–P1.01) disabled if needed; analog switch GPIOs are P1.05/P1.07/P1.13 */
 //&uart10 {
 	//status = "disabled";
 //};

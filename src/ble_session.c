@@ -17,9 +17,9 @@
 
 LOG_MODULE_REGISTER(ble_session, LOG_LEVEL_INF);
 
-/* P1.04 — reed switch (pull-up; short to GND when magnet present). */
+/* P1.10 — reed switch (pull-up; short to GND when magnet present). */
 #define REED_GPIO_NODE  DT_NODELABEL(gpio1)
-#define REED_PIN        4
+#define REED_PIN        10
 
 static const struct device *reed_port;
 static struct gpio_callback reed_gpio_cb;
@@ -156,7 +156,7 @@ void ble_session_init(void)
 
 	reed_port = DEVICE_DT_GET(REED_GPIO_NODE);
 	if (!device_is_ready(reed_port)) {
-		LOG_ERR("GPIO1 not ready for reed (P1.04)");
+		LOG_ERR("GPIO1 not ready for reed (P1.10)");
 		return;
 	}
 
@@ -182,7 +182,7 @@ void ble_session_init(void)
 
 	dk_set_led_off(RUN_STATUS_LED);
 
-	LOG_INF("Reed on P1.04: toggle to enable/disable BLE");
+	LOG_INF("Reed on P1.10: toggle to enable/disable BLE");
 }
 
 #endif /* CONFIG_BT */

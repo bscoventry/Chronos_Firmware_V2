@@ -70,7 +70,7 @@ void timer_start_one_shot_biphasic(void) {}
 #else /* !CONFIG_SPI: full nrfx timer implementation */
 
 #if defined(CONFIG_SOC_NRF5340_CPUAPP)
-/* Re-apply P1.00/P1.01 MCUSEL to App before each use; network/pinctrl can overwrite. */
+/* Re-apply P1.05/P1.07/P1.13 MCUSEL to App before each use; network/pinctrl can overwrite. */
 static void p1_mcu_select_app_sync(void)
 {
 #if defined(NRF_P1)
@@ -82,10 +82,12 @@ static void p1_mcu_select_app_sync(void)
 #endif
 	uint32_t msk = 3u << 16;
 	uint32_t app = 1u << 16;
-	uint32_t c0 = p1->PIN_CNF[0] & ~msk;
-	uint32_t c1 = p1->PIN_CNF[1] & ~msk;
-	p1->PIN_CNF[0] = c0 | app;
-	p1->PIN_CNF[1] = c1 | app;
+	uint32_t c5 = p1->PIN_CNF[5] & ~msk;
+	uint32_t c7 = p1->PIN_CNF[7] & ~msk;
+	uint32_t c13 = p1->PIN_CNF[13] & ~msk;
+	p1->PIN_CNF[5] = c5 | app;
+	p1->PIN_CNF[7] = c7 | app;
+	p1->PIN_CNF[13] = c13 | app;
 }
 #endif
 
@@ -322,10 +324,9 @@ void timer_do_event0(void)
     p1_mcu_select_app_sync();
 #endif
     /* First pulse (DAC1): same as timer COMPARE0 */
-    nrf_gpio_pin_clear(NRF_GPIO_PIN_MAP(1, 0));
-    nrf_gpio_pin_clear(NRF_GPIO_PIN_MAP(1, 1));
-    nrf_gpio_pin_clear(NRF_GPIO_PIN_MAP(0, 13));
-    nrf_gpio_pin_set(NRF_GPIO_PIN_MAP(1, 3));
+    nrf_gpio_pin_clear(NRF_GPIO_PIN_MAP(1, 7));
+    nrf_gpio_pin_clear(NRF_GPIO_PIN_MAP(1, 5));
+    nrf_gpio_pin_set(NRF_GPIO_PIN_MAP(1, 13));
     if (spi_ok) {
         spi_write_dac1(dac2_buf_tx, dac1_buf_rx);
     }
@@ -399,11 +400,10 @@ static void timer_handler(nrf_timer_event_t event_type, void * p_context)
                 main_event_time = nrfx_timer_capture(timer_inst, NRF_TIMER_CC_CHANNEL4);
             }
 
-            // First pulse (DAC1): 1.00=0, 1.01=0, 0.13=0; 1.03=1 before & during TX
-            nrf_gpio_pin_clear(NRF_GPIO_PIN_MAP(1, 0));
-            nrf_gpio_pin_clear(NRF_GPIO_PIN_MAP(1, 1));
-            nrf_gpio_pin_clear(NRF_GPIO_PIN_MAP(0, 13));
-            nrf_gpio_pin_set(NRF_GPIO_PIN_MAP(1, 3));
+            // First pulse (DAC1): 1.07=0, 1.05=0, 1.13=1 before & during TX
+            nrf_gpio_pin_clear(NRF_GPIO_PIN_MAP(1, 7));
+            nrf_gpio_pin_clear(NRF_GPIO_PIN_MAP(1, 5));
+            nrf_gpio_pin_set(NRF_GPIO_PIN_MAP(1, 13));
             if (spi_ok) {
                 /* Phase 1: negative excursion (offset-binary opposite of +I code in dac1_buf). */
                 spi_write_dac1(dac2_buf_tx, dac1_buf_rx);
@@ -423,10 +423,10 @@ static void timer_handler(nrf_timer_event_t event_type, void * p_context)
                 if (my_error > current_max) {atomic_set(&event1_error_max, my_error);}
             }
         
-            // Interphase 10 us: 1.03=0, 1.00=1, 1.01=1
-            nrf_gpio_pin_clear(NRF_GPIO_PIN_MAP(1, 3));
-            nrf_gpio_pin_set(NRF_GPIO_PIN_MAP(1, 0));
-            nrf_gpio_pin_set(NRF_GPIO_PIN_MAP(1, 1));
+            // Interphase 10 us: 1.13=0, 1.07=1, 1.05=0
+            nrf_gpio_pin_clear(NRF_GPIO_PIN_MAP(1, 13));
+            nrf_gpio_pin_set(NRF_GPIO_PIN_MAP(1, 7));
+            nrf_gpio_pin_clear(NRF_GPIO_PIN_MAP(1, 5));
 
             /* Interphase (10 us): 0 point => 0x80 */
             if (spi_ok) {
@@ -447,11 +447,10 @@ static void timer_handler(nrf_timer_event_t event_type, void * p_context)
                 if (my_error > current_max) {atomic_set(&event2_error_max, my_error);}
             }
             
-            // Second pulse (DAC2): 1.00=0, 1.01=0, 0.13=1; DAC2 TX
-            nrf_gpio_pin_clear(NRF_GPIO_PIN_MAP(1, 0));
-            nrf_gpio_pin_clear(NRF_GPIO_PIN_MAP(1, 1));
-            //nrf_gpio_pin_set(NRF_GPIO_PIN_MAP(0, 13));
-            nrf_gpio_pin_set(NRF_GPIO_PIN_MAP(1, 3));
+            // Second pulse (DAC2): 1.07=0, 1.05=1, 1.13=0; DAC2 TX
+            nrf_gpio_pin_clear(NRF_GPIO_PIN_MAP(1, 7));
+            nrf_gpio_pin_set(NRF_GPIO_PIN_MAP(1, 5));
+            nrf_gpio_pin_clear(NRF_GPIO_PIN_MAP(1, 13));
             if (spi_ok) {
                 /* Phase 2: positive excursion = load-current code (host D2B → DAC_amplitude). */
                 spi_write_dac1(dac1_buf_tx, dac1_buf_rx);
@@ -470,11 +469,10 @@ static void timer_handler(nrf_timer_event_t event_type, void * p_context)
                 if (my_error > current_max) {atomic_set(&event3_error_max, my_error);}
             }
 
-            /* Between biphasic pairs: 1.03=0, 0.13=0, 1.00=1, 1.01=1 */
-            nrf_gpio_pin_clear(NRF_GPIO_PIN_MAP(1, 3));
-            nrf_gpio_pin_clear(NRF_GPIO_PIN_MAP(0, 13));
-            nrf_gpio_pin_set(NRF_GPIO_PIN_MAP(1, 0));
-            nrf_gpio_pin_set(NRF_GPIO_PIN_MAP(1, 1));
+            /* Between biphasic pairs: 1.13=0, 1.07=0, 1.05=0 */
+            nrf_gpio_pin_clear(NRF_GPIO_PIN_MAP(1, 13));
+            nrf_gpio_pin_clear(NRF_GPIO_PIN_MAP(1, 7));
+            nrf_gpio_pin_clear(NRF_GPIO_PIN_MAP(1, 5));
 
             /* Idle between cycles: 0 point => 0x80 */
             if (spi_ok) {

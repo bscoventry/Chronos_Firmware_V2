@@ -2,8 +2,8 @@
  * Network core (cpunet) overlay for nRF5340 DK.
  *
  * Moves the network core UART from P1.00/P1.01 to P0.19 (TX) and P0.21 (RX)
- * so that P1.00 and P1.01 can be used by the application core for the switch
- * (medical device). CPUNET has uart0 only (no uart1).
+ * so P1.00/P1.01 are free on the application core (analog switch on P1.05/P1.07/P1.13).
+ * CPUNET has uart0 only (no uart1).
  *
  * Application UART0 (NUS) uses P0.23/P0.25; see app.overlay.
  */

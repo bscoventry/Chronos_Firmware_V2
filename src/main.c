@@ -76,19 +76,13 @@ static void init_pins(void) {
     nrf_gpio_cfg_output(DAC2_CS_PIN);
     nrf_gpio_pin_set(DAC2_CS_PIN);   /* high (inactive) */
     
-    // Switch GPIOs (DAC1/2 -> switch): all 0 at init
-    //HCSS1
-    nrf_gpio_cfg_output(NRF_GPIO_PIN_MAP(2, 7));
-    nrf_gpio_pin_clear(NRF_GPIO_PIN_MAP(2, 7)); //set low (inactive)
-    //HCSS2
-    nrf_gpio_cfg_output(NRF_GPIO_PIN_MAP(2, 9));
-    nrf_gpio_pin_clear(NRF_GPIO_PIN_MAP(2, 9)); //set low (inactive)
-    //HCSS3
-    nrf_gpio_cfg_output(NRF_GPIO_PIN_MAP(2, 8));
-    nrf_gpio_pin_clear(NRF_GPIO_PIN_MAP(2, 8));
-    //HCSS4
-    nrf_gpio_cfg_output(NRF_GPIO_PIN_MAP(2, 0));
-    nrf_gpio_pin_clear(NRF_GPIO_PIN_MAP(2, 0));
+    // Switch GPIOs (DAC1/2 -> switch): all 0 at init (merged 0.02/0.03 line)
+    nrf_gpio_cfg_output(NRF_GPIO_PIN_MAP(1, 13));
+    nrf_gpio_pin_clear(NRF_GPIO_PIN_MAP(1, 13));
+    nrf_gpio_cfg_output(NRF_GPIO_PIN_MAP(1, 7));
+    nrf_gpio_pin_clear(NRF_GPIO_PIN_MAP(1, 7));
+    nrf_gpio_cfg_output(NRF_GPIO_PIN_MAP(1, 5));
+    nrf_gpio_pin_clear(NRF_GPIO_PIN_MAP(1, 5));
 }
 
 int main(void)
@@ -143,7 +137,7 @@ int main(void)
 	}
 
 	ble_session_init();
-	LOG_INF("Toggle reed P1.04 to enable BLE; stimulation off until START byte");
+	LOG_INF("Toggle reed P1.10 to enable BLE; stimulation off until START byte");
 
 	/* RUN_STATUS_LED is driven by ble_session (on while BLE session active). */
 	for (;;) {
