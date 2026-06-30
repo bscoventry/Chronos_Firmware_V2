@@ -43,6 +43,14 @@ Notes:
 #include "rtc_stim.h"   //handles IRQ routines for stimulation
 #include "data.h"
 #include "config.h"   //Set compilation settings. Look here for CONFIG_BT
+#if defined(CONFIG_BT) && !defined(CONFIG_SPI)
+#if defined(CONFIG_CHRONOS_STIM_NVM)
+#include "stim_nvm.h"
+#endif
+#endif
+#if defined(CONFIG_CHRONOS_ZMEAS)
+#include "ad5933.h"
+#endif
 
 #define LOG_MODULE_NAME main
 LOG_MODULE_REGISTER(LOG_MODULE_NAME, LOG_LEVEL_INF);
@@ -68,21 +76,18 @@ BT_CONN_CB_DEFINE(conn_callbacks) = {
 #endif /* CONFIG_BT */
 
 static void init_pins(void) {
-    /* SPI CS and switches are GPIO. When CONFIG_SPI=y the Zephyr driver owns DAC1_CS (P1.08 in Zephyr devicetree). */
+    /* SPI CS and analog-switch GPIO (nrfx SPIM21 + timer.c). */
 #if !defined(CONFIG_SPI)
-    nrf_gpio_cfg_output(DAC1_CS_PIN);
-    nrf_gpio_pin_set(DAC1_CS_PIN);   /* high (inactive) */
+    nrf_gpio_cfg_output(DAC_CS_PIN);
+    nrf_gpio_pin_set(DAC_CS_PIN);   /* high (inactive) */
 #endif
-    nrf_gpio_cfg_output(DAC2_CS_PIN);
-    nrf_gpio_pin_set(DAC2_CS_PIN);   /* high (inactive) */
-    
-    // Switch GPIOs (DAC1/2 -> switch): all 0 at init (merged 0.02/0.03 line)
-    nrf_gpio_cfg_output(NRF_GPIO_PIN_MAP(1, 13));
-    nrf_gpio_pin_clear(NRF_GPIO_PIN_MAP(1, 13));
-    nrf_gpio_cfg_output(NRF_GPIO_PIN_MAP(1, 7));
-    nrf_gpio_pin_clear(NRF_GPIO_PIN_MAP(1, 7));
-    nrf_gpio_cfg_output(NRF_GPIO_PIN_MAP(1, 5));
-    nrf_gpio_pin_clear(NRF_GPIO_PIN_MAP(1, 5));
+
+    nrf_gpio_cfg_output(NRF_GPIO_PIN_MAP(1, SWITCH_PIN_FIRST));
+    nrf_gpio_pin_clear(NRF_GPIO_PIN_MAP(1, SWITCH_PIN_FIRST));
+    nrf_gpio_cfg_output(NRF_GPIO_PIN_MAP(1, SWITCH_PIN_INTER));
+    nrf_gpio_pin_clear(NRF_GPIO_PIN_MAP(1, SWITCH_PIN_INTER));
+    nrf_gpio_cfg_output(NRF_GPIO_PIN_MAP(1, SWITCH_PIN_SECOND));
+    nrf_gpio_pin_clear(NRF_GPIO_PIN_MAP(1, SWITCH_PIN_SECOND));
 }
 
 int main(void)
@@ -99,16 +104,51 @@ int main(void)
     /* nrfx build: initialize SPI once; transactions are driven from timer ISR. */
     spi_init();
 #endif
+#if defined(CONFIG_CHRONOS_ZMEAS)
+    {
+	    int zerr = ad5933_phase_a_probe(false);
+
+	    if (zerr != 0) {
+		    LOG_WRN("AD5933 Phase A probe failed: %d", zerr);
+	    }
+    }
+#endif
 #if defined(CONFIG_BT)
     timer_init();
 #else
     timer_burst_init();
 #endif
+#if defined(CONFIG_BT)
+    data_init_defaults();
+#if !defined(CONFIG_SPI)
+#if defined(CONFIG_CHRONOS_STIM_NVM)
+    {
+	    int nvm_err = stim_nvm_boot_load(&settings, &pending_settings);
+
+	    (void)nvm_err;
+	    update_pulse_width(settings.pulse_width);
+	    update_stim_frequency(settings.frequency);
+	    update_dac1_amplitude(settings.DAC_amplitude);
+	    update_dac2_amplitude(settings.DAC_amplitude);
+	    if (stim_nvm_wants_boot_resume()) {
+		    timer_stimulation_enable_from_boot();
+	    }
+    }
+#else
+    update_pulse_width(settings.pulse_width);
+    update_stim_frequency(settings.frequency);
+    update_dac1_amplitude(settings.DAC_amplitude);
+    update_dac2_amplitude(settings.DAC_amplitude);
+#endif
+#else
+    update_pulse_width(settings.pulse_width);
+#endif
+#else
     update_pulse_width(CONFIG_PULSE_WIDTH_US);
     update_dac1_amplitude(CONFIG_STIM_AMPLITUDE);
     update_dac2_amplitude(CONFIG_STIM_AMPLITUDE);
-
     data_init_defaults();
+#endif
 
 #if defined(CONFIG_BT)
 	/* Stimulation timer stays off until START control byte (see data.c). */
@@ -137,9 +177,9 @@ int main(void)
 	}
 
 	ble_session_init();
-	LOG_INF("Toggle reed P1.10 to enable BLE; stimulation off until START byte");
+	LOG_INF("Reed P1.15: swipe to enable BLE; stimulation off until START byte");
 
-	/* RUN_STATUS_LED is driven by ble_session (on while BLE session active). */
+	/* Stimulation timer stays off until START control byte (see data.c). */
 	for (;;) {
 		if (MEASURE_TIMER == 1) {
 			k_msleep(10000);

@@ -2,7 +2,9 @@
 #include <uart_async_adapter.h>
 #include <zephyr/drivers/uart.h>
 #include <zephyr/usb/usb_device.h>
+#if IS_ENABLED(CONFIG_DK_LIBRARY)
 #include <dk_buttons_and_leds.h>
+#endif
 #endif
 
 #include <zephyr/types.h>
@@ -20,7 +22,7 @@
 #include <zephyr/settings/settings.h>
 #endif
 
-#include <stdio.h>
+#include <zephyr/sys/util.h>
 #include <string.h>
 
 #include <zephyr/logging/log.h>
@@ -118,7 +120,9 @@ void connected(struct bt_conn *conn, uint8_t err)
 
 	current_conn = bt_conn_ref(conn);
 
+#if IS_ENABLED(CONFIG_DK_LIBRARY)
 	dk_set_led_on(CON_STATUS_LED);
+#endif
 }
 
 void disconnected(struct bt_conn *conn, uint8_t reason)
@@ -137,7 +141,9 @@ void disconnected(struct bt_conn *conn, uint8_t reason)
 	if (current_conn) {
 		bt_conn_unref(current_conn);
 		current_conn = NULL;
+#if IS_ENABLED(CONFIG_DK_LIBRARY)
 		dk_set_led_off(CON_STATUS_LED);
+#endif
 	}
 }
 
@@ -274,6 +280,7 @@ void configure_gpio(void)
 {
 	int err;
 
+#if IS_ENABLED(CONFIG_DK_LIBRARY)
 #ifdef CONFIG_BT_NUS_SECURITY_ENABLED
 	err = dk_buttons_init(button_changed);
 	if (err) {
@@ -285,11 +292,16 @@ void configure_gpio(void)
 	if (err) {
 		LOG_ERR("Cannot init LEDs (err: %d)", err);
 	}
+#else
+	ARG_UNUSED(err);
+#endif
 }
 
 void error(void)
 {
+#if IS_ENABLED(CONFIG_DK_LIBRARY)
 	dk_set_leds_state(DK_ALL_LEDS_MSK, DK_NO_LEDS_MSK);
+#endif
 
 	while (true) {
 		/* Spin for ever */

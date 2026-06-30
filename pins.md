@@ -1,64 +1,72 @@
 # Chronos nRF54L15 — pin reference
 
-Firmware pin usage for **SPI (DAC)** and **analog-switch GPIO** driven from `timer.c`.
+Firmware pin usage for **SPI (single DAC)** and **analog-switch GPIO** driven from `timer.c`.
+
+Custom board: **QFN52 QGAA** (P1.00–P1.16 on port 1). DK LED library disabled (`CONFIG_DK_LIBRARY=n`).
 
 ## All GPIO pins (summary)
-
-Sorted by port and pin index. One row per physical pin; details below by subsystem.
 
 | Port.pin | Direction | Function |
 |----------|-----------|----------|
 | **P0.23** | Out | NUS UART TX (`app.overlay`) |
 | **P0.25** | In | NUS UART RX (`app.overlay`) |
-| **P1.05** | Out | Analog switch control (`timer.c`, `main.c`) |
-| **P1.06** | Out | SPI MOSI / SPIM21 (`spi.h`, `spi.c`) |
-| **P1.07** | Out | Analog switch control (`timer.c`, `main.c`) |
-| **P1.09** | Out | DAC1 chip select (GPIO, active low; `spi.h` / `spi.c`) |
-| **P1.10** | In | Reed switch input (`ble_session.c`) |
+| **P0.05** | Out | AD5933 electrode-route switch (`zmeas_gpio.c`; off at boot) |
+| **P1.02** | Out | Analog switch — interphase (`timer.c`, `main.c`) |
+| **P1.03** | Out | Analog switch — second pulse (`timer.c`, `main.c`) |
+| **P1.08** | I2C | TWIM SCL → AD5933 (`i2c22`, Phase A) |
+| **P1.09** | Out | SPI DAC chip select (GPIO, active low; `spi.h` / `spi.c`) |
+| **P1.10** | Out | SPI MOSI / SPIM21 (`spi.h`, `spi.c`) |
 | **P1.11** | Out | SPI SCK / SPIM21 (`spi.h`, `spi.c`) |
-| **P1.13** | Out | Analog switch control (`timer.c`, `main.c`) |
-| **P1.14** | Out | DAC2 chip select (GPIO, active low; `spi.h` / `spi.c`) |
-
-**DK LEDs / buttons:** `DK_LED1`, `DK_LED2` (and optional passkey buttons when `CONFIG_BT_NUS_SECURITY_ENABLED`) — pins come from the board devicetree (`dk_buttons_and_leds`), not fixed in application source.
-
-**NUS UART on other boards:** Top-level `app.overlay` uses **P0.23 / P0.25** for `&uart00`. nRF54L15 DK board overlays sometimes enable a different UART instance for NUS (e.g. UART30); confirm in `boards/*cpuapp*.overlay` if you build for that target.
+| **P1.12** | I2C | TWIM SDA → AD5933 (`i2c22`, Phase A) |
+| **P1.15** | In | Reed switch input (`ble_session.c`, pull-down) |
+| **P1.16** | Out | Analog switch — first pulse (`timer.c`, `main.c`; QFN52 phys pin 6) |
 
 ## SPI (nrfx SPIM21, `spi.h` / `spi.c`)
 
-| Signal   | Port.pin | Notes                          |
-|----------|----------|--------------------------------|
-| SCK      | **P1.11** | Serial clock                   |
-| MOSI     | **P1.06** | Data to DAC                    |
-| DAC1 CS  | **P1.09** | Chip select, GPIO (active low) |
-| DAC2 CS  | **P1.14** | Chip select, GPIO (active low) |
-| MISO     | —         | Not used; disconnected in devicetree pinctrl |
+| Signal | Port.pin | Notes |
+|--------|----------|--------|
+| SCK | **P1.11** | Serial clock |
+| MOSI | **P1.10** | Data to DAC |
+| CS | **P1.09** | Chip select, GPIO (active low) |
+| MISO | — | Not used; disconnected in devicetree pinctrl |
+
+Single DAC: both biphasic phases use `spi_write_dac1()` / **P1.09** CS. Phase-2 codes live in `dac2_buf_tx` (opposite amplitude).
 
 ## GPIO analog-switch control (`timer.c`)
 
-These lines are toggled in the timer ISR around SPI phases (`timer_do_event0` / `timer_handler`).
+| Port.pin | Role |
+|----------|------|
+| **P1.16** | First pulse |
+| **P1.02** | Interphase (25 µs) |
+| **P1.03** | Second pulse |
 
-| Port.pin | Role in comments / sequence |
-|----------|-----------------------------|
-| **P1.07** | Merged switch line (replaces former P0.02 + P0.03) |
-| **P1.05** | Switch control (replaces former P0.04) |
-| **P1.13** | Switch control (replaces former P0.05) |
+At startup all three are low (`init_pins()`).
 
-At startup all three are low (`init_pins()`): `P1.13=0`, `P1.07=0`, `P1.05=0`.
+Timer phase behavior:
+- First pulse: `P1.16=1`, `P1.02=0`, `P1.03=0`
+- Interphase: `P1.16=0`, `P1.02=1`, `P1.03=0`
+- Second pulse: `P1.16=0`, `P1.02=0`, `P1.03=1`
+- After second pulse: `P1.16=0`, `P1.02=0`, `P1.03=0`
 
-Timer phase behavior in `timer.c`:
-- First pulse: `P1.13=1`, `P1.07=0`, `P1.05=0`
-- Interphase: `P1.13=0`, `P1.07=1`, `P1.05=0`
-- Second pulse: `P1.13=0`, `P1.07=0`, `P1.05=1`
-- After second pulse: `P1.13=0`, `P1.07=0`, `P1.05=0`
+## Impedance monitor (`zmeas_gpio.c`, `ad5933.c`, Phase A)
+
+| Port.pin | Role |
+|----------|------|
+| **P0.05** | Routes electrodes to AD5933 path when high |
+| **P1.08** | I2C SCL (TWIM22) |
+| **P1.12** | I2C SDA (TWIM22) |
+
+Use **i2c22**, not i2c21 — i2c21 shares the peripheral block with nrfx **SPIM21**.
 
 ## BLE reed switch (`ble_session.c`)
 
 | Signal | Port.pin | Notes |
-|--------|----------|-------|
-| Reed switch input | **P1.10** | GPIO input with pull-up; magnetic toggle enables/disables BLE session |
+|--------|----------|--------|
+| Reed switch input | **P1.15** | Pull-down; NO reed to VCC on swipe |
 
 ## See also
 
-- `src/spi.h` — macro names `SCK_PIN`, `MOSI_PIN`, `DAC1_CS_PIN`, `DAC2_CS_PIN`
-- `app.overlay` — SPIM21 pinctrl (SCK/MOSI; MISO disconnected)
-- `src/ble_session.c` — magnetic reed on **P1.10** (separate from `timer.c` switch GPIOs)
+- `src/spi.h` — `SCK_PIN`, `MOSI_PIN`, `DAC_CS_PIN`
+- `src/timer.h` — `SWITCH_PIN_FIRST`, `SWITCH_PIN_INTER`, `SWITCH_PIN_SECOND`
+- `app.overlay` — SPIM21 pinctrl (SCK P1.11, MOSI P1.10)
+- `boards/nrf54l15dk_nrf54l15_cpuapp.overlay` — `gpio1` `ngpios = <17>` for P1.16

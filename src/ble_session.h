@@ -3,7 +3,7 @@
 
 #if defined(CONFIG_BT)
 
-/** Magnetic reed on P1.10: debounced edges toggle BLE session on/off. */
+/** Reed P1.15 (NO, swipe to VCC): each rising edge toggles BLE after lockout (ble_session.c). */
 void ble_session_init(void);
 
 /** Reset 5-minute inactivity timeout (call on each NUS RX). */

@@ -11,9 +11,9 @@ class TestD2B(unittest.TestCase):
     
     def setUp(self):
         """Set up test constants"""
-        self.V_REF = 3.3
-        self.R_SENSE = 100
-        self.MAX_CURRENT = math.floor(3.3 * 10 / self.R_SENSE * 1000000)  # in μA
+        self.V_REF = D2B.V_REF
+        self.R_SENSE = D2B.R_SENSE
+        self.MAX_CURRENT = D2B.MAX_CURRENT
         
     def test_zero_current(self):
         """Test that 0 μA gives 0x8000 (0V output)"""

@@ -1,0 +1,33 @@
+mainmenu "Chronos"
+
+source "Kconfig.zephyr"
+
+config CHRONOS_ZMEAS
+	bool "AD5933 impedance path (Phase A: I2C probe, P0.05 switch GPIO)"
+	default y
+	depends on I2C
+	help
+	  Enables I2C22 on P1.08 (SCL) / P1.12 (SDA), P0.05 electrode-route
+	  switch GPIO, and boot-time AD5933 register readback.
+
+config CHRONOS_ZMEAS_SWITCH_ACTIVE_HIGH
+	bool "Impedance route switch: connect when P0.05 is high"
+	default y
+	depends on CHRONOS_ZMEAS
+
+config CHRONOS_STIM_NVM
+	bool "Persist stimulation settings in NVM (Settings/NVS + boot resume)"
+	default y
+	depends on BT
+	help
+	  Stores stim parameters and enabled flag in flash with CRC32.
+	  When disabled, RAM defaults from config.h apply every boot and
+	  boot-time stimulation resume is off (useful for power debugging).
+
+	  When enabled, also set in prj.conf (Settings backend is a Kconfig
+	  choice — cannot be auto-selected from here):
+	    CONFIG_FLASH_MAP=y
+	    CONFIG_FLASH_PAGE_LAYOUT=y
+	    CONFIG_NVS=y
+	    CONFIG_SETTINGS=y
+	    CONFIG_SETTINGS_NVS=y

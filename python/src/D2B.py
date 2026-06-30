@@ -17,9 +17,9 @@
 import math
 from numpy import clip
 
-V_REF = 3.3  # Reference voltage for DAC
+V_REF = 2.5  # DAC8832 reference voltage (V)
 R_SENSE = 100 # Sense resistor value in Ohms
-MAX_CURRENT = math.floor(3.3 * 10 / R_SENSE * 1000000)  # Maximum current in uA
+MAX_CURRENT = math.floor(V_REF * 10 / R_SENSE * 1000000)  # Maximum current in uA
 # Input value is in uA
 def decimal_to_binary(decimal_value, bits=16):
     V_DAC = (decimal_value * R_SENSE / 10.0)/1000000  # Convert uA to V

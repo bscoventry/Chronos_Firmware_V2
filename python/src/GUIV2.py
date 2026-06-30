@@ -53,6 +53,10 @@ class NordicBLEGUI:
         # Control section
         control_frame = ttk.LabelFrame(main_frame, text="Stimulation Control", padding="5")
         control_frame.grid(row=1, column=0, columnspan=2, sticky=(tk.W, tk.E), pady=(0, 10))
+
+        #recording control frame
+        record_frame = ttk.LabelFrame(main_frame, text="Recording Control", padding='5')
+        record_frame.grid(row=1, column=2, columnspan=2, sticky=(tk.W, tk.E), pady=(0,10))
         
         # Start checkbox
         self.start_var = tk.BooleanVar(value=False)
@@ -62,11 +66,23 @@ class NordicBLEGUI:
             variable=self.start_var,
             command=self.on_start_changed
         )
+        self.start_record = tk.BooleanVar(value=False)
+        self.start_record_checkbox = ttk.Checkbutton(
+            record_frame,
+            text="Enable recording",
+            variable=self.start_record,
+            command=self.record_changed
+        )
         self.start_checkbox.grid(row=0, column=0, sticky=tk.W, pady=(0, 5))
+        self.start_record_checkbox.grid(row=0, column=0, sticky=tk.W, pady=(0,5))
         
         # Status indicator for stimulation
         self.stim_status_label = ttk.Label(control_frame, text="Status: STOPPED (DAC = 0V)", foreground="red")
         self.stim_status_label.grid(row=1, column=0, sticky=tk.W, pady=(0, 5))
+
+        #status indicator for recording
+        self.recording_status_label = ttk.Label(record_frame, text="Status: recording STOPPED", foreground="red")
+        self.recording_status_label.grid(row=1, column=0, sticky=tk.W, pady=(0,5))
         
         # Parameters section
         params_frame = ttk.LabelFrame(main_frame, text="Stimulation Parameters", padding="5")
@@ -88,7 +104,7 @@ class NordicBLEGUI:
         
         # Frequency
         ttk.Label(params_frame, text="Frequency:").grid(row=2, column=0, sticky=tk.W, pady=2)
-        self.freq_var = tk.StringVar(value="25")
+        self.freq_var = tk.StringVar(value="100")
         self.freq_entry = ttk.Entry(params_frame, textvariable=self.freq_var, width=10)
         self.freq_entry.grid(row=2, column=1, sticky=tk.W, padx=(5, 0))
         ttk.Label(params_frame, text="Hz (0-65535)").grid(row=2, column=2, sticky=tk.W, padx=(5, 0))
@@ -136,7 +152,7 @@ class NordicBLEGUI:
         log_frame.rowconfigure(0, weight=1)
         
         # Configure main frame weights
-        main_frame.columnconfigure(0, weight=1)
+        main_frame.columnconfigure(1, weight=1)
         main_frame.rowconfigure(3, weight=1)
         self.root.columnconfigure(0, weight=1)
         self.root.rowconfigure(0, weight=1)
@@ -152,6 +168,25 @@ class NordicBLEGUI:
             # Automatically send stop command when unchecked
             if self.connected:
                 self.send_stop_command()
+    #recording version of on_start_changed (UPDATE)
+    def record_changed(self):
+        """Handle start recording checkbox state change"""
+        if self.start_record.get():
+            self.recording_status_label.config(text="Status: ENABLED (Recording)", foreground="green")
+            self.log_message("Recording ENABLED")
+            if self.connected:
+                # Subscribe to NUS TX first, then send ADC start byte
+                future = self.run_coroutine(self._start_adc_notify())
+                threading.Thread(target=self._check_send_result, args=(future,), daemon=True).start()
+                self.send_adc_start_command()
+        else:
+            self.recording_status_label.config(text="Status: STOPPED (Recording)", foreground="red")
+            self.log_message("Recording STOPPED")
+            if self.connected:
+                # Send ADC stop byte first, then unsubscribe from NUS TX
+                self.send_adc_stop_command()
+                future = self.run_coroutine(self._stop_adc_notify())
+                threading.Thread(target=self._check_send_result, args=(future,), daemon=True).start()
     
     def emergency_stop(self):
         """Emergency stop - immediately disable stimulation"""
@@ -172,7 +207,7 @@ class NordicBLEGUI:
         try:
             # Get current pulse width and frequency, but set DAC to 0V (0x8000)
             pulse_width = int(self.pulse_var.get()) if self.pulse_var.get().isdigit() else 500
-            frequency = int(self.freq_var.get()) if self.freq_var.get().isdigit() else 25
+            frequency = int(self.freq_var.get()) if self.freq_var.get().isdigit() else 100
             
             # Byte 0: STIM_CTRL_STOP (0x00). Bytes 1–6: DAC, pulse, freq (pending when idle).
             data = struct.pack('<BHHH', 0x00, 0x8000, pulse_width, frequency)
@@ -184,6 +219,34 @@ class NordicBLEGUI:
             
         except Exception as e:
             self.log_message(f"Stop command error: {str(e)}")
+    
+    def send_adc_start_command(self):
+        """Send ADC_CTRL_START (0x02) to begin SAADC recording"""
+        try:
+            data = struct.pack('<B', 0x02)  # single byte, no payload
+            self.log_message("Sending ADC START (ctrl=0x02)")
+            future = self.run_coroutine(self._send_data(data))
+            threading.Thread(target=self._check_send_result, args=(future,), daemon=True).start()
+        except Exception as e:
+            self.log_message(f"ADC start command error: {str(e)}")
+
+    def send_adc_stop_command(self):
+        """Send ADC_CTRL_STOP (0x03) to stop SAADC recording"""
+        try:
+            data = struct.pack('<B', 0x03)  # single byte, no payload
+            self.log_message("Sending ADC STOP (ctrl=0x03)")
+            future = self.run_coroutine(self._send_data(data))
+            threading.Thread(target=self._check_send_result, args=(future,), daemon=True).start()
+        except Exception as e:
+            self.log_message(f"ADC stop command error: {str(e)}")
+
+    def _on_nus_data_received(self, sender, data: bytearray):
+        """Handle incoming NUS TX notifications (SAADC samples from firmware)"""
+        num_samples = len(data) // 2
+        if num_samples == 0:
+            return
+        samples = struct.unpack(f'<{num_samples}h', data[:num_samples * 2])
+        self.log_message(f"{samples}")
     
     def log_message(self, message):
         """Add message to log with timestamp"""
@@ -351,6 +414,22 @@ class NordicBLEGUI:
             self.log_message(f"Input error: {str(e)}")
         except Exception as e:
             self.log_message(f"Send error: {str(e)}")
+
+    async def _start_adc_notify(self):
+        """Subscribe to NUS TX notifications for SAADC data"""
+        try:
+            await self.client.start_notify(NUS_TX_CHAR_UUID, self._on_nus_data_received)
+            self.root.after(0, lambda: self.log_message("Subscribed to SAADC notifications"))
+        except Exception as e:
+            self.root.after(0, lambda: self.log_message(f"Notify subscribe error: {str(e)}"))
+
+    async def _stop_adc_notify(self):
+        """Unsubscribe from NUS TX notifications"""
+        try:
+            await self.client.stop_notify(NUS_TX_CHAR_UUID)
+            self.root.after(0, lambda: self.log_message("Unsubscribed from SAADC notifications"))
+        except Exception as e:
+            self.root.after(0, lambda: self.log_message(f"Notify unsubscribe error: {str(e)}"))
     
     async def _send_data(self, data):
         """Async send data"""

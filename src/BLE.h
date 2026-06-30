@@ -1,7 +1,7 @@
 #ifndef BLE_H
 #define BLE_H
 
-#include <zephyr/types.h>
+#include <zephyr/sys/util.h>
 #include <zephyr/device.h>
 #include <zephyr/kernel.h>
 
@@ -53,11 +53,18 @@ UART_ASYNC_ADAPTER_INST_DEFINE(async_adapter);
 #else
 #define async_adapter NULL
 #endif
+#if IS_ENABLED(CONFIG_DK_LIBRARY)
 #include <dk_buttons_and_leds.h>
 #define RUN_STATUS_LED DK_LED1
 #define CON_STATUS_LED DK_LED2
 #define KEY_PASSKEY_ACCEPT DK_BTN1_MSK
 #define KEY_PASSKEY_REJECT DK_BTN2_MSK
+#else
+#define RUN_STATUS_LED 0
+#define CON_STATUS_LED 0
+#define KEY_PASSKEY_ACCEPT 0
+#define KEY_PASSKEY_REJECT 0
+#endif
 #else
 #define RUN_STATUS_LED 0
 #define CON_STATUS_LED 0

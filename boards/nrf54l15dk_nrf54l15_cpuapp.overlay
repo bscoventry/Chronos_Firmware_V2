@@ -4,8 +4,8 @@
  * SPDX-License-Identifier: LicenseRef-Nordic-5-Clause
  */
 /*
- * nRF54L15: SPIM20 on P1 (nrfx). SCK P1.05, MOSI P1.06, CS1 P1.09, CS2 P1.14.
- * UART20 disabled so P1.x available. nrfx configures GPIO+PSEL; no pinctrl for SPI.
+ * nRF54L15 custom / QFN52: SPIM21 nrfx DAC on P1.11 SCK, P1.10 MOSI, P1.09 CS.
+ * Analog switches P1.16 / P1.02 / P1.03 (timer.c). UART20 disabled on DK overlay.
  */
 
 /* Disabled: nrfx uses SPIM21; keep mx25r64 disabled to avoid spi00 bus reference. */
@@ -26,12 +26,17 @@
 	pinctrl-names = "default", "sleep";
 };
 
-/* Still need to release NFC pins for GPIO use */
+/* P1.02 (NFC1) and P1.03 (NFC2) analog switches: program UICR on first boot. */
+&uicr {
+	nfct-pins-as-gpios;
+};
+
 &gpio0 {
 	status = "okay";
 };
 &gpio1 {
 	status = "okay";
+	ngpios = <17>;
 };
 &gpio2 {
 	status = "okay";
@@ -48,7 +53,7 @@
  */
 &i2c20 { status = "disabled"; };
 &i2c21 { status = "disabled"; };
-&i2c22 { status = "disabled"; };
+/* i2c22: AD5933 (SCL P1.08, SDA P1.12). Not i2c21 — same block as nrfx SPIM21. */
 &i2c30 { status = "disabled"; };
 /* spi00/spi20 cleared above for nrfx; clear pinctrl on rest to avoid device ord refs. */
 &spi21 {
@@ -107,4 +112,29 @@
 };
 &grtc {
     status = "okay";
+};
+
+&pinctrl {
+	i2c22_chronos_default: i2c22_chronos_default {
+		group1 {
+			psels = <NRF_PSEL(TWIM_SDA, 1, 12)>,
+				<NRF_PSEL(TWIM_SCL, 1, 8)>;
+		};
+	};
+
+	i2c22_chronos_sleep: i2c22_chronos_sleep {
+		group1 {
+			psels = <NRF_PSEL(TWIM_SDA, 1, 12)>,
+				<NRF_PSEL(TWIM_SCL, 1, 8)>;
+			low-power-enable;
+		};
+	};
+};
+
+&i2c22 {
+	status = "okay";
+	clock-frequency = <I2C_BITRATE_STANDARD>;
+	pinctrl-0 = <&i2c22_chronos_default>;
+	pinctrl-1 = <&i2c22_chronos_sleep>;
+	pinctrl-names = "default", "sleep";
 };

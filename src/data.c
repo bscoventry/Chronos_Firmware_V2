@@ -6,6 +6,9 @@
 #include "config.h"
 #include "spi.h"
 #include "timer.h"
+#if defined(CONFIG_BT) && !defined(CONFIG_SPI) && defined(CONFIG_CHRONOS_STIM_NVM)
+#include "stim_nvm.h"
+#endif
 
 stim_setting settings;
 stim_setting pending_settings;
@@ -31,6 +34,9 @@ static void stimulation_engine_start(const stim_setting *s)
 		return;
 	}
 
+#if defined(CONFIG_CHRONOS_STIM_NVM)
+	(void)stim_nvm_save(true, s);
+#endif
 	update_stim_frequency(s->frequency);
 	update_pulse_width(s->pulse_width);
 	update_dac1_amplitude(s->DAC_amplitude);
@@ -56,7 +62,11 @@ void process_received_data(stim_setting *active_settings, uint8_t *data, uint16_
 		memcpy(active_settings, &payload, sizeof(stim_setting));
 		memcpy(&pending_settings, &payload, sizeof(stim_setting));
 		if (running) {
-			/* Refresh DAC codes mid-run; avoid update_stim_frequency (disables timer on BT). */
+#if defined(CONFIG_CHRONOS_STIM_NVM)
+			(void)stim_nvm_save(true, &payload);
+#endif
+			update_stim_frequency(payload.frequency);
+			update_pulse_width(payload.pulse_width);
 			update_dac1_amplitude(payload.DAC_amplitude);
 			update_dac2_amplitude(payload.DAC_amplitude);
 			return;
@@ -67,9 +77,17 @@ void process_received_data(stim_setting *active_settings, uint8_t *data, uint16_
 
 	if (ctrl == STIM_CTRL_STOP) {
 		if (running) {
+#if defined(CONFIG_CHRONOS_STIM_NVM)
+			(void)stim_nvm_save(false, active_settings);
+#endif
 			stim_timer_request_stop_after_burst();
 		} else {
+#if defined(CONFIG_CHRONOS_STIM_NVM)
+			(void)stim_nvm_save(false, &payload);
+#endif
 			memcpy(&pending_settings, &payload, sizeof(stim_setting));
+			update_dac1_amplitude(pending_settings.DAC_amplitude);
+			update_dac2_amplitude(pending_settings.DAC_amplitude);
 		}
 		return;
 	}
